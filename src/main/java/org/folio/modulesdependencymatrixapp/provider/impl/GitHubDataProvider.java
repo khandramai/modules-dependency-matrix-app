@@ -32,7 +32,7 @@ public class GitHubDataProvider implements DataProvider {
     private static final Logger logger = LogManager.getLogger("GitHubDataProvider");
     private static final HttpClient client = HttpClient.newHttpClient();
     private static final String BASE_URL = "https://raw.githubusercontent.com/folio-org/";
-    private static final String TOKEN = "a776953df57448bcec1eb5b36834b16f495f519a";
+    private static final String TOKEN = "TOKEN";
     private final GitHub gitHub;
 
     public GitHubDataProvider() throws IOException {
