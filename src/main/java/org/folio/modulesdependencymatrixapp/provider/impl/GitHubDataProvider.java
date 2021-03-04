@@ -3,19 +3,29 @@ package org.folio.modulesdependencymatrixapp.provider.impl;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import lombok.SneakyThrows;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.folio.modulesdependencymatrixapp.Module;
+import org.folio.modulesdependencymatrixapp.entity.Module;
 import org.folio.modulesdependencymatrixapp.json.UIModuleDeserializer;
 import org.folio.modulesdependencymatrixapp.provider.DataProvider;
+import org.json.JSONObject;
 import org.kohsuke.github.GHRepository;
 import org.kohsuke.github.GitHub;
 import org.kohsuke.github.GitHubBuilder;
 import org.springframework.stereotype.Service;
+import org.w3c.dom.Document;
+import org.xml.sax.InputSource;
 
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.xpath.XPath;
+import javax.xml.xpath.XPathFactory;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.StringReader;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -24,22 +34,30 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
 public class GitHubDataProvider implements DataProvider {
 
-    private static final Logger logger = LogManager.getLogger("GitHubDataProvider");
+    private static final Logger logger = LogManager.getLogger(GitHubDataProvider.class);
     private static final HttpClient client = HttpClient.newHttpClient();
     private static final String BASE_URL = "https://raw.githubusercontent.com/folio-org/";
-    private static final String TOKEN = "TOKEN";
+    private static final String TOKEN = "f5f4d0d42375b092ca8d1369139878bbe4c97824";
+    public static final String ARTIFACT_ID_X_PATH = "/project/artifactId";
+    public static final String RAML_MODULE_BUILDER_VERSION_X_PATH = "/project/properties/raml-module-builder.version";
     private final GitHub gitHub;
+    private static final String POM_XML = "pom.xml";
 
     public GitHubDataProvider() throws IOException {
         gitHub = new GitHubBuilder().withOAuthToken(TOKEN).build();
     }
 
-    @Override
+    public List<Module> getAllModules(int lastTag) {
+        return null;
+    }
+
+
     public List<Module> getDataFromMaster() {
         Map<String, String> descriptors = new HashMap<>();
 
@@ -86,7 +104,6 @@ public class GitHubDataProvider implements DataProvider {
                     .forEach(repo -> {
                         try {
                             GHRepository repository = gitHub.getRepository("folio-org/" + repo);
-                            var tags = repository.listTags().toList();
 
                             if (repo.startsWith("ui-")) {
                                 descriptors.put(repo, getFileContentForTag(number, repository, "package.json"));
@@ -94,7 +111,7 @@ public class GitHubDataProvider implements DataProvider {
                                 descriptors.put(repo, getFileContentForTag(number, repository, "descriptors/ModuleDescriptor-template.json"));
                             }
                         } catch (IOException e) {
-                            logger.error(String.format("%s doesn't have package.json or ModuleDescriptor-template.json", repo));
+                            logger.error(String.format("%s doesn't have package.json or ModuleDescriptor-template.json (search by Tag)", repo));
 
                         }
                     });
@@ -105,17 +122,8 @@ public class GitHubDataProvider implements DataProvider {
         return mapDescriptorsToModules(descriptors);
     }
 
-    private String getFileContent(String name, GHRepository repository, String repoName) throws IOException {
-        var file = repository.getFileContent(name);
-        logger.info(String.format("Loaded %s from %s", file.getName(), repoName));
-        var stream = file.read();
-        var streamReader = new InputStreamReader(stream);
-        var reader = new BufferedReader(streamReader);
-        return reader.lines().parallel().collect(Collectors.joining("\n"));
-    }
 
-    private String getFileContentForTag(int tagNumber, GHRepository repository, String fileName) throws IOException {
-
+    private String getFileContentForTag(int tagNumber, GHRepository repository, String filePackageName) throws IOException {
         var tags = repository.listTags().toList();
         String tag = "master";
 
@@ -123,19 +131,29 @@ public class GitHubDataProvider implements DataProvider {
             tag = tags.get(tagNumber).getName();
         }
 
-        String uri = BASE_URL + repository.getName() + "/" + tag + "/" + fileName;
-        String body = null;
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(uri))
+        String uriPom = BASE_URL + repository.getName() + "/master/" + POM_XML;
+        String uriPackage = BASE_URL + repository.getName() + "/" + tag + "/" + filePackageName;
+        String body;
+
+
+        HttpRequest requestPom = HttpRequest.newBuilder()
+                .uri(URI.create(uriPom))
+                .header("Authorization", "token " + TOKEN)
+                .build();
+
+        HttpRequest requestPackage = HttpRequest.newBuilder()
+                .uri(URI.create(uriPackage))
                 .header("Authorization", "token " + TOKEN)
                 .build();
 
         try {
-            HttpResponse<String> moduleDescriptorResponse = client.send(request, HttpResponse.BodyHandlers.ofString());
-            body = moduleDescriptorResponse.body();
+            HttpResponse<String> moduleDescriptorResponsePackage = client.send(requestPackage, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> moduleDescriptorResponsePom = client.send(requestPom, HttpResponse.BodyHandlers.ofString());
+
+            body = builderToJson(moduleDescriptorResponsePom.body(), moduleDescriptorResponsePackage.body(),tag);
         } catch (InterruptedException e) {
             e.printStackTrace();
-            throw new IOException("Can't read file from uri: " + uri);
+            throw new IOException("Can't read file from uri: " + uriPackage);
         }
 
         return body;
@@ -143,25 +161,86 @@ public class GitHubDataProvider implements DataProvider {
 
     private String getFileContentForMaster(GHRepository repository, String fileName) throws IOException {
         String uri = BASE_URL + repository.getName() + "/master/" + fileName;
-        String body = null;
-        HttpRequest request = HttpRequest.newBuilder()
+        String uriPom = BASE_URL + repository.getName() + "/master/" + POM_XML;
+        String body;
+
+        HttpRequest requestPom = HttpRequest.newBuilder()
+                .uri(URI.create(uriPom))
+                .header("Authorization", "token " + TOKEN)
+                .build();
+        HttpRequest requestPackage = HttpRequest.newBuilder()
                 .uri(URI.create(uri))
                 .header("Authorization", "token " + TOKEN)
                 .build();
 
         try {
-            HttpResponse<String> moduleDescriptorResponse = client.send(request, HttpResponse.BodyHandlers.ofString());
-            body = moduleDescriptorResponse.body();
+            HttpResponse<String> moduleDescriptorResponsePackageJson = client.send(requestPackage, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> moduleDescriptorResponsePom = client.send(requestPom, HttpResponse.BodyHandlers.ofString());
+
+            String tag = getTag(repository);
+
+            body = builderToJson(moduleDescriptorResponsePom.body(), moduleDescriptorResponsePackageJson.body(),tag);
         } catch (InterruptedException e) {
             e.printStackTrace();
             throw new IOException("Can't read file from uri: " + uri);
         }
-
         return body;
     }
 
-    private List<Module> mapDescriptorsToModules(Map<String, String> descriptors) {
+    private String builderToJson(String pomXml, String packageJson, String tag) throws JsonProcessingException {
+        String artefactId = "n/a";
+        String rmb = "n/a";
+        if (isNotFound(pomXml)) {
+            artefactId = getStringByXPath(pomXml, ARTIFACT_ID_X_PATH);
+            rmb = getStringByXPath(pomXml, RAML_MODULE_BUILDER_VERSION_X_PATH);
+        }
 
+        ObjectMapper mapper = new ObjectMapper();
+
+        String jsonToAddFirst = packageJson.substring(0, packageJson.length() - 3) + ",";
+        // create a JSON object
+        ObjectNode node = mapper.createObjectNode();
+        node.put("artifactId", artefactId);
+        node.put("previousReleaseVersion", tag);
+        node.put("rmb", rmb);
+        String json = "";
+        try {
+            json = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(node);
+        } catch (JsonProcessingException e) {
+            e.printStackTrace();
+        }
+        return jsonToAddFirst + json.substring(1);
+    }
+
+    private boolean isNotFound(String pomXml) {
+        return !Pattern.compile("404: Not Found").matcher(pomXml).find();
+    }
+
+
+    @SneakyThrows
+    private String getStringByXPath(String body, String regexp) {
+        body = correctResponseBody(body);
+        InputSource source = new InputSource(new StringReader(body));
+
+        DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+        DocumentBuilder db = dbf.newDocumentBuilder();
+        Document document = db.parse(source);
+
+        XPathFactory xpathFactory = XPathFactory.newInstance();
+        XPath xpath = xpathFactory.newXPath();
+
+        String res = xpath.evaluate(regexp, document);
+        if (res.isEmpty()) {
+            return "n/a";
+        }
+        return res;
+    }
+
+    private String correctResponseBody(String body) {
+        return body.trim().replaceFirst("^([\\W]+)<", "<");
+    }
+
+    private List<Module> mapDescriptorsToModules(Map<String, String> descriptors) {
         Map<String, String> uiDescriptors = new HashMap<>();
         Map<String, String> beDescriptors = new HashMap<>();
 
@@ -175,6 +254,7 @@ public class GitHubDataProvider implements DataProvider {
 
         var modules = beDescriptors.values()
                 .stream()
+                .filter(el -> !Pattern.compile("404").matcher(el).find())
                 .map(value -> {
                     Module module = null;
                     try {
@@ -184,7 +264,7 @@ public class GitHubDataProvider implements DataProvider {
                         logger.error(e);
                     }
                     return module;
-                }).filter(Objects::nonNull).collect(Collectors.toList());
+                }).filter(Objects::nonNull).distinct().collect(Collectors.toList());
 
         ObjectMapper mapper = new ObjectMapper();
         SimpleModule module = new SimpleModule();
@@ -193,6 +273,7 @@ public class GitHubDataProvider implements DataProvider {
 
         var uiModules = uiDescriptors.values()
                 .stream()
+                .filter(el -> !Pattern.compile("404").matcher(el).find())
                 .map(value -> {
                     Module uiModule = null;
                     try {
@@ -202,10 +283,45 @@ public class GitHubDataProvider implements DataProvider {
                         logger.error(e);
                     }
                     return uiModule;
-                }).filter(Objects::nonNull).collect(Collectors.toList());
+                }).filter(Objects::nonNull).distinct().collect(Collectors.toList());
 
         modules.addAll(uiModules);
 
         return modules;
+    }
+
+    private String getRequiresFromMaster(String requires) {
+        JSONObject obj = new JSONObject(requires);
+        if (Pattern.compile("requires").matcher(obj.toString()).find()) {
+            return obj.get("requires").toString().replaceFirst("requires", "requiresMaster");
+        }
+        return " ";
+    }
+    private String getFileContent(String name, GHRepository repository, String repoName) throws IOException {
+        var file = repository.getFileContent(name);
+        logger.info(String.format("Loaded %s from %s", file.getName(), repoName));
+        var stream = file.read();
+        var streamReader = new InputStreamReader(stream);
+        var reader = new BufferedReader(streamReader);
+        return reader.lines().parallel().collect(Collectors.joining("\n"));
+    }
+
+    private String getTag(GHRepository repository) throws IOException {
+        String tag = "master";
+        var tags = repository.listTags().toList();
+        if (!tags.isEmpty()) {
+            tag = tags.get(0).getName();
+        }
+        return tag;
+    }
+
+    private String getBodyJsonByTag(GHRepository repository) throws IOException {
+        String bodyByTag;
+        if (repository.getName().startsWith("ui-")) {
+            bodyByTag = getFileContentForTag(0, repository, "package.json");
+        } else {
+            bodyByTag = getFileContentForTag(0, repository, "descriptors/ModuleDescriptor-template.json");
+        }
+        return bodyByTag;
     }
 }
