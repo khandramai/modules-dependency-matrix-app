@@ -32,13 +32,6 @@ public class ExcelWriter implements Writer {
     private static final int HEADER_FONT_SIZE = 11;
     private static final int INFO_START_COLUMN = 0;
 
-    @Override
-    public Workbook exportToExcel(List<Module> moduleList, Map<String, Dependency> map) {
-        Workbook workbook = createWorkbookAndSheet();
-        createAndFillDefaultSheet(workbook, moduleList, map);
-        return workbook;
-    }
-
     private static Workbook createWorkbookAndSheet() {
         Workbook workbook = new XSSFWorkbook();
         workbook.createSheet(ExcelWriter.SHEET_NAME);
@@ -58,7 +51,6 @@ public class ExcelWriter implements Writer {
         setModuleInfo(sheet, eventInfoCellStyle, modules, map);
         setArchiveColumnsWidth(sheet);
     }
-
 
     private static void setModuleInfo(final Sheet sheet, final CellStyle timeSlotInfoCellStyle, final List<Module> modules, Map<String, Dependency> map) {
         AtomicInteger rowIndex = new AtomicInteger(0);
@@ -102,7 +94,6 @@ public class ExcelWriter implements Writer {
 
     }
 
-
     private static Row getOrCreateRow(final Sheet sheet, final AtomicInteger rowIndex) {
         Row row = sheet.getRow(rowIndex.incrementAndGet());
         if (Objects.isNull(row)) {
@@ -116,7 +107,6 @@ public class ExcelWriter implements Writer {
         cell.setCellValue(data);
         cell.setCellStyle(cellStyle);
     }
-
 
     private static void setArchiveColumnsWidth(final Sheet sheet) {
         sheet.setColumnWidth(0, 95 * 40);
@@ -172,5 +162,12 @@ public class ExcelWriter implements Writer {
         cellStyle.setRightBorderColor(IndexedColors.BLACK.getIndex());
         cellStyle.setBorderTop(BorderStyle.THIN);
         cellStyle.setTopBorderColor(IndexedColors.BLACK.getIndex());
+    }
+
+    @Override
+    public Workbook exportToExcel(List<Module> moduleList, Map<String, Dependency> map) {
+        Workbook workbook = createWorkbookAndSheet();
+        createAndFillDefaultSheet(workbook, moduleList, map);
+        return workbook;
     }
 }

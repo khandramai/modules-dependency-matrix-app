@@ -49,14 +49,14 @@ public class ModulesDependencyMatrixAppApplication implements CommandLineRunner 
         Map<String, Dependency> map = new HashMap<>();
         dataFromMaster.stream().distinct().forEach(el -> {
             List<Dependency> provides = el.getProvides();
-            if(Objects.nonNull(provides)) {
+            if (Objects.nonNull(provides)) {
                 provides.forEach(i -> {
                     i.setOwnerName(el.getArtifactId());
                     map.put(i.getId(), i);
                 });
             }
         });
-        Workbook wb = writer.exportToExcel(dataByTags,map);
+        Workbook wb = writer.exportToExcel(dataByTags, map);
 
         log.info("Start to save file");
         File currDir = new File(".");

@@ -15,12 +15,11 @@ import lombok.ToString;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class Dependency {
 
-    public Dependency() {
-    }
-
     private String id;
     private String version;
     private String name;
     private String ownerName;
+    public Dependency() {
+    }
 
 }

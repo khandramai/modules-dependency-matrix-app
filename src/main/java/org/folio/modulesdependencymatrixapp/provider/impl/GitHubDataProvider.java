@@ -40,14 +40,14 @@ import java.util.stream.Collectors;
 @Service
 public class GitHubDataProvider implements DataProvider {
 
+    public static final String ARTIFACT_ID_X_PATH = "/project/artifactId";
+    public static final String RAML_MODULE_BUILDER_VERSION_X_PATH = "/project/properties/raml-module-builder.version";
     private static final Logger logger = LogManager.getLogger(GitHubDataProvider.class);
     private static final HttpClient client = HttpClient.newHttpClient();
     private static final String BASE_URL = "https://raw.githubusercontent.com/folio-org/";
     private static final String TOKEN = "f5f4d0d42375b092ca8d1369139878bbe4c97824";
-    public static final String ARTIFACT_ID_X_PATH = "/project/artifactId";
-    public static final String RAML_MODULE_BUILDER_VERSION_X_PATH = "/project/properties/raml-module-builder.version";
-    private final GitHub gitHub;
     private static final String POM_XML = "pom.xml";
+    private final GitHub gitHub;
 
     public GitHubDataProvider() throws IOException {
         gitHub = new GitHubBuilder().withOAuthToken(TOKEN).build();
@@ -150,7 +150,7 @@ public class GitHubDataProvider implements DataProvider {
             HttpResponse<String> moduleDescriptorResponsePackage = client.send(requestPackage, HttpResponse.BodyHandlers.ofString());
             HttpResponse<String> moduleDescriptorResponsePom = client.send(requestPom, HttpResponse.BodyHandlers.ofString());
 
-            body = builderToJson(moduleDescriptorResponsePom.body(), moduleDescriptorResponsePackage.body(),tag);
+            body = builderToJson(moduleDescriptorResponsePom.body(), moduleDescriptorResponsePackage.body(), tag);
         } catch (InterruptedException e) {
             e.printStackTrace();
             throw new IOException("Can't read file from uri: " + uriPackage);
@@ -179,7 +179,7 @@ public class GitHubDataProvider implements DataProvider {
 
             String tag = getTag(repository);
 
-            body = builderToJson(moduleDescriptorResponsePom.body(), moduleDescriptorResponsePackageJson.body(),tag);
+            body = builderToJson(moduleDescriptorResponsePom.body(), moduleDescriptorResponsePackageJson.body(), tag);
         } catch (InterruptedException e) {
             e.printStackTrace();
             throw new IOException("Can't read file from uri: " + uri);
@@ -297,6 +297,7 @@ public class GitHubDataProvider implements DataProvider {
         }
         return " ";
     }
+
     private String getFileContent(String name, GHRepository repository, String repoName) throws IOException {
         var file = repository.getFileContent(name);
         logger.info(String.format("Loaded %s from %s", file.getName(), repoName));
