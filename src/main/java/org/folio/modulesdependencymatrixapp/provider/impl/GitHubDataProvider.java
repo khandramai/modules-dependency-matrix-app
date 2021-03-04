@@ -10,7 +10,6 @@ import org.apache.logging.log4j.Logger;
 import org.folio.modulesdependencymatrixapp.entity.Module;
 import org.folio.modulesdependencymatrixapp.json.UIModuleDeserializer;
 import org.folio.modulesdependencymatrixapp.provider.DataProvider;
-import org.json.JSONObject;
 import org.kohsuke.github.GHRepository;
 import org.kohsuke.github.GitHub;
 import org.kohsuke.github.GitHubBuilder;
@@ -22,9 +21,7 @@ import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.xpath.XPath;
 import javax.xml.xpath.XPathFactory;
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.io.StringReader;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -45,18 +42,13 @@ public class GitHubDataProvider implements DataProvider {
     private static final Logger logger = LogManager.getLogger(GitHubDataProvider.class);
     private static final HttpClient client = HttpClient.newHttpClient();
     private static final String BASE_URL = "https://raw.githubusercontent.com/folio-org/";
-    private static final String TOKEN = "f5f4d0d42375b092ca8d1369139878bbe4c97824";
+    private static final String TOKEN = "set your correct github token";
     private static final String POM_XML = "pom.xml";
     private final GitHub gitHub;
 
     public GitHubDataProvider() throws IOException {
         gitHub = new GitHubBuilder().withOAuthToken(TOKEN).build();
     }
-
-    public List<Module> getAllModules(int lastTag) {
-        return null;
-    }
-
 
     public List<Module> getDataFromMaster() {
         Map<String, String> descriptors = new HashMap<>();
@@ -187,7 +179,7 @@ public class GitHubDataProvider implements DataProvider {
         return body;
     }
 
-    private String builderToJson(String pomXml, String packageJson, String tag) throws JsonProcessingException {
+    private String builderToJson(String pomXml, String packageJson, String tag) {
         String artefactId = "n/a";
         String rmb = "n/a";
         if (isNotFound(pomXml)) {
@@ -290,23 +282,6 @@ public class GitHubDataProvider implements DataProvider {
         return modules;
     }
 
-    private String getRequiresFromMaster(String requires) {
-        JSONObject obj = new JSONObject(requires);
-        if (Pattern.compile("requires").matcher(obj.toString()).find()) {
-            return obj.get("requires").toString().replaceFirst("requires", "requiresMaster");
-        }
-        return " ";
-    }
-
-    private String getFileContent(String name, GHRepository repository, String repoName) throws IOException {
-        var file = repository.getFileContent(name);
-        logger.info(String.format("Loaded %s from %s", file.getName(), repoName));
-        var stream = file.read();
-        var streamReader = new InputStreamReader(stream);
-        var reader = new BufferedReader(streamReader);
-        return reader.lines().parallel().collect(Collectors.joining("\n"));
-    }
-
     private String getTag(GHRepository repository) throws IOException {
         String tag = "master";
         var tags = repository.listTags().toList();
@@ -316,13 +291,4 @@ public class GitHubDataProvider implements DataProvider {
         return tag;
     }
 
-    private String getBodyJsonByTag(GHRepository repository) throws IOException {
-        String bodyByTag;
-        if (repository.getName().startsWith("ui-")) {
-            bodyByTag = getFileContentForTag(0, repository, "package.json");
-        } else {
-            bodyByTag = getFileContentForTag(0, repository, "descriptors/ModuleDescriptor-template.json");
-        }
-        return bodyByTag;
-    }
 }

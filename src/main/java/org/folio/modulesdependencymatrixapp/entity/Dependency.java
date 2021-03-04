@@ -19,6 +19,7 @@ public class Dependency {
     private String version;
     private String name;
     private String ownerName;
+
     public Dependency() {
     }
 

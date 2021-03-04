@@ -8,7 +8,5 @@ public interface DataProvider {
 
     List<Module> getDataFromMaster();
 
-//    List<Module> getAllModules(int lastTag);
-
     List<Module> getDataFromTag(int number);
 }

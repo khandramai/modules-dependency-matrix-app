@@ -18,6 +18,9 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class Module {
 
+    public Module() {
+    }
+
     private String id;
     private List<Dependency> requires;
     private List<Dependency> provides;
@@ -26,7 +29,5 @@ public class Module {
     private String artifactId;
     private String previousReleaseVersion;
     private String previousReleaseData;
-    public Module() {
-    }
 
 }
