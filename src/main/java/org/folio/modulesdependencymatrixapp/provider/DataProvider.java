@@ -1,11 +1,12 @@
 package org.folio.modulesdependencymatrixapp.provider;
 
-import org.folio.modulesdependencymatrixapp.Module;
+import org.folio.modulesdependencymatrixapp.entity.Module;
+
 import java.util.List;
 
 public interface DataProvider {
 
-    public List<Module> getDataFromMaster();
+    List<Module> getDataFromMaster();
 
-    public List<Module> getDataFromTag(int number);
+    List<Module> getDataFromTag(int number);
 }
