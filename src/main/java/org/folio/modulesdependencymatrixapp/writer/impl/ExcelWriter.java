@@ -31,6 +31,8 @@ public class ExcelWriter implements Writer {
     private static final String[] tableFields = {"Module Id", "Module name", "Previous Release version", "Previous release date", "Previous Final Interface Versions Required", "Current Interface Versions Required (at master)", "Module Interface Owner", "RMB"};
     private static final int HEADER_FONT_SIZE = 11;
     private static final int INFO_START_COLUMN = 0;
+    private static CellStyle MAJOR_CHANGED;
+    private static CellStyle MINOR_CHANGED;
 
     private static Workbook createWorkbookAndSheet() {
         Workbook workbook = new XSSFWorkbook();
@@ -46,6 +48,9 @@ public class ExcelWriter implements Writer {
 
         CellStyle centeredHeaderCellStyle = createHeaderCellStyle(workbook, headerFont);
         CellStyle eventInfoCellStyle = createEventInfoCellStyle(workbook, infoFont);
+
+        MAJOR_CHANGED = createStyleWithFillColor(workbook, infoFont, IndexedColors.RED.getIndex());
+        MINOR_CHANGED = createStyleWithFillColor(workbook, infoFont, IndexedColors.YELLOW.getIndex());
 
         setArchiveHeaders(sheet, centeredHeaderCellStyle);
         setModuleInfo(sheet, eventInfoCellStyle, modules, map);
@@ -77,16 +82,24 @@ public class ExcelWriter implements Writer {
 
         AtomicReference<Row> rowInc = new AtomicReference<>();
 
+
         if (Objects.nonNull(requires)) {
             requires.forEach(el -> {
+                CellStyle currentStyle = timeSlotInfoCellStyle;
                 rowInc.set(getOrCreateRow(sheet, rowIndex));
-                createCell(rowInc.get(), cellIndex.get(), el.getId() + ":: " + el.getVersion(), timeSlotInfoCellStyle);
                 if (map.containsKey(el.getId())) {
                     Dependency dependency = map.get(el.getId());
-                    createCell(rowInc.get(), cellIndex.incrementAndGet(), dependency.getId() + ":: " + dependency.getVersion(), timeSlotInfoCellStyle);
-                    createCell(rowInc.get(), cellIndex.incrementAndGet(), dependency.getOwnerName(), timeSlotInfoCellStyle);
+                    if(el.getVersion().isMajorChanged(dependency.getVersion())){
+                        currentStyle = MAJOR_CHANGED;
+                    }else if(el.getVersion().isMinorChanged(dependency.getVersion())){
+                        currentStyle = MINOR_CHANGED;
+                    }
+                    createCell(rowInc.get(), cellIndex.incrementAndGet(), dependency.getId() + ":: " + dependency.getVersion(), currentStyle);
+                    createCell(rowInc.get(), cellIndex.incrementAndGet(), dependency.getOwnerName(), currentStyle);
                     cellIndex.set(cellIndex.get() - 2);
                 }
+                createCell(rowInc.get(), cellIndex.get(), el.getId() + ":: " + el.getVersion(), currentStyle);
+
             });
         }
         cellIndex.set(7);
@@ -141,6 +154,16 @@ public class ExcelWriter implements Writer {
         cellStyle.setAlignment(HorizontalAlignment.CENTER);
         cellStyle.setVerticalAlignment(VerticalAlignment.CENTER);
         cellStyle.setFillForegroundColor(IndexedColors.GOLD.getIndex());
+        cellStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        addBorder(cellStyle);
+        return cellStyle;
+    }
+
+    private static CellStyle createStyleWithFillColor(final Workbook workbook, final Font font, short color) {
+        CellStyle cellStyle = workbook.createCellStyle();
+        cellStyle.setFont(font);
+        cellStyle.setWrapText(true);
+        cellStyle.setFillForegroundColor(color);
         cellStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
         addBorder(cellStyle);
         return cellStyle;

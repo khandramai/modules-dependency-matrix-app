@@ -35,6 +35,11 @@ public class SubVersion {
         return isMajorChanged(subVersion) || isMinorChanged(subVersion);
     }
 
+    @Override
+    public String toString() {
+        return  major + "." + minor;
+    }
+
     private static int parseInt(String integer) {
         try {
             return Integer.parseInt(integer);

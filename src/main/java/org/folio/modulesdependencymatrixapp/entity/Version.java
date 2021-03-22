@@ -9,7 +9,6 @@ import java.util.List;
 
 @Setter
 @Getter
-@ToString
 public class Version {
 
     private List<SubVersion> versions;
@@ -47,6 +46,14 @@ public class Version {
         } else {
             return false;
         }
+    }
+
+    public String toString() {
+        StringBuilder stringBuilder = new StringBuilder();
+        versions.forEach(version -> {
+            stringBuilder.append(version.toString()).append(" ");
+        });
+        return stringBuilder.toString();
     }
 
     private boolean isMultiple() {

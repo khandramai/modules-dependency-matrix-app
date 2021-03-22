@@ -42,7 +42,7 @@ public class GitHubDataProvider implements DataProvider {
     private static final Logger logger = LogManager.getLogger(GitHubDataProvider.class);
     private static final HttpClient client = HttpClient.newHttpClient();
     private static final String BASE_URL = "https://raw.githubusercontent.com/folio-org/";
-    private static final String TOKEN = "set your correct github token";
+    private static final String TOKEN = "b0f3f47f4b8a2051a429f744a9a1b02b1b6312ad";
     private static final String POM_XML = "pom.xml";
     private final GitHub gitHub;
 
@@ -57,22 +57,31 @@ public class GitHubDataProvider implements DataProvider {
             var organization = gitHub.getOrganization("folio-org");
             var repositories = organization.getRepositories();
 
+            long repositoriesCount = repositories
+                    .keySet()
+                    .stream()
+                    .filter(repo -> repo.startsWith("edge-") || repo.startsWith("mod-") || repo.startsWith("ui-"))
+                    .count();
+
             repositories
                     .keySet()
                     .stream()
                     .filter(repo -> repo.startsWith("edge-") || repo.startsWith("mod-") || repo.startsWith("ui-"))
                     .forEach(repo -> {
-                        try {
-                            GHRepository repository = gitHub.getRepository("folio-org/" + repo);
-                            if (repo.startsWith("ui-")) {
-                                descriptors.put(repo, getFileContentForMaster(repository, "package.json"));
-                            } else {
-                                descriptors.put(repo, getFileContentForMaster(repository, "descriptors/ModuleDescriptor-template.json"));
-                            }
-                        } catch (IOException e) {
-                            logger.error(String.format("%s doesn't have package.json or ModuleDescriptor-template.json", repo));
+//                        if(descriptors.size() < 10) {
+                            try {
+                                GHRepository repository = gitHub.getRepository("folio-org/" + repo);
+                                if (repo.startsWith("ui-")) {
+                                    descriptors.put(repo, getFileContentForMaster(repository, "package.json"));
+                                } else {
+                                    descriptors.put(repo, getFileContentForMaster(repository, "descriptors/ModuleDescriptor-template.json"));
+                                }
+                            } catch (IOException e) {
+                                logger.error(String.format("%s doesn't have package.json or ModuleDescriptor-template.json", repo));
 
-                        }
+                            }
+                            logger.info("Progress: {} / {}", descriptors.size(), repositoriesCount);
+//                        }
                     });
         } catch (IOException e) {
             logger.error(e);
@@ -89,23 +98,32 @@ public class GitHubDataProvider implements DataProvider {
             var organization = gitHub.getOrganization("folio-org");
             var repositories = organization.getRepositories();
 
+            long repositoriesCount = repositories
+                    .keySet()
+                    .stream()
+                    .filter(repo -> repo.startsWith("edge-") || repo.startsWith("mod-") || repo.startsWith("ui-"))
+                    .count();
+
             repositories
                     .keySet()
                     .stream()
                     .filter(repo -> repo.startsWith("edge-") || repo.startsWith("mod-") || repo.startsWith("ui-"))
                     .forEach(repo -> {
-                        try {
-                            GHRepository repository = gitHub.getRepository("folio-org/" + repo);
+//                        if(descriptors.size() < 10) {
+                            try {
+                                GHRepository repository = gitHub.getRepository("folio-org/" + repo);
 
-                            if (repo.startsWith("ui-")) {
-                                descriptors.put(repo, getFileContentForTag(number, repository, "package.json"));
-                            } else {
-                                descriptors.put(repo, getFileContentForTag(number, repository, "descriptors/ModuleDescriptor-template.json"));
+                                if (repo.startsWith("ui-")) {
+                                    descriptors.put(repo, getFileContentForTag(number, repository, "package.json"));
+                                } else {
+                                    descriptors.put(repo, getFileContentForTag(number, repository, "descriptors/ModuleDescriptor-template.json"));
+                                }
+                            } catch (IOException e) {
+                                logger.error(String.format("%s doesn't have package.json or ModuleDescriptor-template.json (search by Tag)", repo));
+
                             }
-                        } catch (IOException e) {
-                            logger.error(String.format("%s doesn't have package.json or ModuleDescriptor-template.json (search by Tag)", repo));
-
-                        }
+                            logger.info("Progress: {} / {}", descriptors.size(), repositoriesCount);
+//                        }
                     });
         } catch (IOException e) {
             logger.error(e);

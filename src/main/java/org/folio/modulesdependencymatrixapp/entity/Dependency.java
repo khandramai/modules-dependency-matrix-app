@@ -16,11 +16,15 @@ import lombok.ToString;
 public class Dependency {
 
     private String id;
-    private String version;
+    private Version version;
     private String name;
     private String ownerName;
 
     public Dependency() {
+    }
+
+    public void setVersion(String version){
+        this.version = new Version(version);
     }
 
 }
