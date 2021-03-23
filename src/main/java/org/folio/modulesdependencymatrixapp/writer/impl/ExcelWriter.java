@@ -77,7 +77,7 @@ public class ExcelWriter implements Writer {
         createCell(row, cellIndex.getAndIncrement(), module.getName(), timeSlotInfoCellStyle);
         createCell(row, cellIndex.getAndIncrement(), module.getArtifactId(), timeSlotInfoCellStyle);
         createCell(row, cellIndex.getAndIncrement(), module.getPreviousReleaseVersion(), timeSlotInfoCellStyle);
-        createCell(row, cellIndex.getAndIncrement(), "date", timeSlotInfoCellStyle);
+        createCell(row, cellIndex.getAndIncrement(), module.getPreviousReleaseData(), timeSlotInfoCellStyle);
         List<Dependency> requires = module.getRequires();
 
         AtomicReference<Row> rowInc = new AtomicReference<>();
@@ -162,7 +162,6 @@ public class ExcelWriter implements Writer {
     private static CellStyle createStyleWithFillColor(final Workbook workbook, final Font font, short color) {
         CellStyle cellStyle = workbook.createCellStyle();
         cellStyle.setFont(font);
-        cellStyle.setWrapText(true);
         cellStyle.setFillForegroundColor(color);
         cellStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
         addBorder(cellStyle);

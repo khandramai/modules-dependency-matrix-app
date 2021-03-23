@@ -18,6 +18,8 @@ public class UIModuleDeserializer extends StdDeserializer<Module> {
     private static final String NAME_FIELD = "name";
     private static final String VERSION_FIELD = "version";
     private static final String DEPENDENCIES_FIELD = "okapiInterfaces";
+    private static final String PREVIOUS_RELEASE_FIELD = "previousReleaseVersion";
+    private static final String  PREVIOUS_RELEASE_DATE_FIELD = "previousReleaseData";
 
     public UIModuleDeserializer() {
         this(null);
@@ -33,6 +35,8 @@ public class UIModuleDeserializer extends StdDeserializer<Module> {
         String name = node.get(NAME_FIELD).asText();
         String version = node.get(VERSION_FIELD).asText();
         List<Dependency> dependencies = new ArrayList<>();
+        String previousReleaseVersion = node.get(PREVIOUS_RELEASE_FIELD).asText();
+        String previousReleaseDate = node.get(PREVIOUS_RELEASE_DATE_FIELD).asText();
 
         Iterator<Map.Entry<String, JsonNode>> okapiInterfaces = null;
         var dependenciesNode = node.findValue(DEPENDENCIES_FIELD);
@@ -53,6 +57,8 @@ public class UIModuleDeserializer extends StdDeserializer<Module> {
         module.setName(name);
         module.setId(version);
         module.setRequires(dependencies);
+        module.setPreviousReleaseVersion(previousReleaseVersion);
+        module.setPreviousReleaseData(previousReleaseDate);
 
         return module;
     }

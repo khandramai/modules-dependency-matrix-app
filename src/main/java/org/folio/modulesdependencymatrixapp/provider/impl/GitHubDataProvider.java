@@ -1,6 +1,7 @@
 package org.folio.modulesdependencymatrixapp.provider.impl;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -8,6 +9,7 @@ import lombok.SneakyThrows;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.folio.modulesdependencymatrixapp.entity.Module;
+import org.folio.modulesdependencymatrixapp.entity.Release;
 import org.folio.modulesdependencymatrixapp.json.UIModuleDeserializer;
 import org.folio.modulesdependencymatrixapp.provider.DataProvider;
 import org.kohsuke.github.GHRepository;
@@ -27,10 +29,14 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -44,6 +50,7 @@ public class GitHubDataProvider implements DataProvider {
     private static final String BASE_URL = "https://raw.githubusercontent.com/folio-org/";
     private static final String TOKEN = "b0f3f47f4b8a2051a429f744a9a1b02b1b6312ad";
     private static final String POM_XML = "pom.xml";
+    private static final String RELEASES_URL = "https://api.github.com/repos/folio-org/*/releases";
     private final GitHub gitHub;
 
     public GitHubDataProvider() throws IOException {
@@ -68,20 +75,18 @@ public class GitHubDataProvider implements DataProvider {
                     .stream()
                     .filter(repo -> repo.startsWith("edge-") || repo.startsWith("mod-") || repo.startsWith("ui-"))
                     .forEach(repo -> {
-//                        if(descriptors.size() < 10) {
-                            try {
-                                GHRepository repository = gitHub.getRepository("folio-org/" + repo);
-                                if (repo.startsWith("ui-")) {
-                                    descriptors.put(repo, getFileContentForMaster(repository, "package.json"));
-                                } else {
-                                    descriptors.put(repo, getFileContentForMaster(repository, "descriptors/ModuleDescriptor-template.json"));
-                                }
-                            } catch (IOException e) {
-                                logger.error(String.format("%s doesn't have package.json or ModuleDescriptor-template.json", repo));
-
+                        try {
+                            GHRepository repository = gitHub.getRepository("folio-org/" + repo);
+                            if (repo.startsWith("ui-")) {
+                                descriptors.put(repo, getFileContentForMaster(repository, "package.json"));
+                            } else {
+                                descriptors.put(repo, getFileContentForMaster(repository, "descriptors/ModuleDescriptor-template.json"));
                             }
-                            logger.info("Progress: {} / {}", descriptors.size(), repositoriesCount);
-//                        }
+                        } catch (IOException e) {
+                            logger.error(String.format("%s doesn't have package.json or ModuleDescriptor-template.json", repo));
+
+                        }
+                        logger.info("Progress: {} / {} (Module: {} Master)", descriptors.size(), repositoriesCount, repo);
                     });
         } catch (IOException e) {
             logger.error(e);
@@ -109,21 +114,19 @@ public class GitHubDataProvider implements DataProvider {
                     .stream()
                     .filter(repo -> repo.startsWith("edge-") || repo.startsWith("mod-") || repo.startsWith("ui-"))
                     .forEach(repo -> {
-//                        if(descriptors.size() < 10) {
-                            try {
-                                GHRepository repository = gitHub.getRepository("folio-org/" + repo);
+                        try {
+                            GHRepository repository = gitHub.getRepository("folio-org/" + repo);
 
-                                if (repo.startsWith("ui-")) {
-                                    descriptors.put(repo, getFileContentForTag(number, repository, "package.json"));
-                                } else {
-                                    descriptors.put(repo, getFileContentForTag(number, repository, "descriptors/ModuleDescriptor-template.json"));
-                                }
-                            } catch (IOException e) {
-                                logger.error(String.format("%s doesn't have package.json or ModuleDescriptor-template.json (search by Tag)", repo));
-
+                            if (repo.startsWith("ui-")) {
+                                descriptors.put(repo, getFileContentForTag(number, repository, "package.json"));
+                            } else {
+                                descriptors.put(repo, getFileContentForTag(number, repository, "descriptors/ModuleDescriptor-template.json"));
                             }
-                            logger.info("Progress: {} / {}", descriptors.size(), repositoriesCount);
-//                        }
+                        } catch (IOException e) {
+                            logger.error(String.format("%s doesn't have package.json or ModuleDescriptor-template.json (search by Tag)", repo));
+
+                        }
+                        logger.info("Progress: {} / {} (Module: {} Tag index: {})", descriptors.size(), repositoriesCount, repo, number);
                     });
         } catch (IOException e) {
             logger.error(e);
@@ -143,7 +146,7 @@ public class GitHubDataProvider implements DataProvider {
 
         String uriPom = BASE_URL + repository.getName() + "/master/" + POM_XML;
         String uriPackage = BASE_URL + repository.getName() + "/" + tag + "/" + filePackageName;
-        String body;
+        String body = "";
 
 
         HttpRequest requestPom = HttpRequest.newBuilder()
@@ -156,14 +159,43 @@ public class GitHubDataProvider implements DataProvider {
                 .header("Authorization", "token " + TOKEN)
                 .build();
 
-        try {
-            HttpResponse<String> moduleDescriptorResponsePackage = client.send(requestPackage, HttpResponse.BodyHandlers.ofString());
-            HttpResponse<String> moduleDescriptorResponsePom = client.send(requestPom, HttpResponse.BodyHandlers.ofString());
+        HttpRequest requestReleases = HttpRequest.newBuilder()
+                .uri(URI.create(RELEASES_URL.replace("*", repository.getName())))
+                .header("Authorization", "token " + TOKEN)
+                .build();
 
-            body = builderToJson(moduleDescriptorResponsePom.body(), moduleDescriptorResponsePackage.body(), tag);
+        try {
+
+            var moduleDescriptorResponsePackageFuture = client.sendAsync(requestPackage, HttpResponse.BodyHandlers.ofString());
+            var moduleDescriptorResponsePomFuture = client.sendAsync(requestPom, HttpResponse.BodyHandlers.ofString());
+            var releasesResponseFuture = client.sendAsync(requestReleases, HttpResponse.BodyHandlers.ofString());
+
+            CompletableFuture.allOf(moduleDescriptorResponsePackageFuture, moduleDescriptorResponsePomFuture, releasesResponseFuture).get();
+
+            HttpResponse<String> moduleDescriptorResponsePackage = moduleDescriptorResponsePackageFuture.get();
+            HttpResponse<String> moduleDescriptorResponsePom = moduleDescriptorResponsePomFuture.get();
+            HttpResponse<String> releasesResponse = releasesResponseFuture.get();
+
+            List<Release> releaseList = new ArrayList<>();
+            String releaseDate = "none";
+            try {
+                if (releasesResponse.body() != null && !releasesResponse.body().isEmpty()) {
+                    releaseList = new ObjectMapper().readValue(releasesResponse.body(), new TypeReference<List<Release>>() {
+                    });
+                    if (!releaseList.isEmpty()) {
+                        releaseDate = releaseList.get(0).getPublishedAt().toString();
+                    }
+                }
+            } catch (JsonProcessingException e) {
+                e.printStackTrace();
+            }
+
+            body = builderToJson(moduleDescriptorResponsePom.body(), moduleDescriptorResponsePackage.body(), tag, releaseDate);
         } catch (InterruptedException e) {
             e.printStackTrace();
             throw new IOException("Can't read file from uri: " + uriPackage);
+        } catch (ExecutionException e) {
+            e.printStackTrace();
         }
 
         return body;
@@ -189,7 +221,7 @@ public class GitHubDataProvider implements DataProvider {
 
             String tag = getTag(repository);
 
-            body = builderToJson(moduleDescriptorResponsePom.body(), moduleDescriptorResponsePackageJson.body(), tag);
+            body = builderToJson(moduleDescriptorResponsePom.body(), moduleDescriptorResponsePackageJson.body(), tag, LocalDateTime.now().toString());
         } catch (InterruptedException e) {
             e.printStackTrace();
             throw new IOException("Can't read file from uri: " + uri);
@@ -197,7 +229,7 @@ public class GitHubDataProvider implements DataProvider {
         return body;
     }
 
-    private String builderToJson(String pomXml, String packageJson, String tag) {
+    private String builderToJson(String pomXml, String packageJson, String tag, String releaseDate) {
         String artefactId = "n/a";
         String rmb = "n/a";
         if (isNotFound(pomXml)) {
@@ -213,6 +245,7 @@ public class GitHubDataProvider implements DataProvider {
         node.put("artifactId", artefactId);
         node.put("previousReleaseVersion", tag);
         node.put("rmb", rmb);
+        node.put("previousReleaseData", releaseDate);
         String json = "";
         try {
             json = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(node);

@@ -38,8 +38,8 @@ public class ModulesDependencyMatrixAppApplication implements CommandLineRunner 
     public void run(String... args) throws Exception {
         log.info("Start DataProvider");
 
-        List<Module> dataFromMaster = dataProvider.getDataFromMaster();
         List<Module> dataByTags = dataProvider.getDataFromTag(0);
+        List<Module> dataFromMaster = dataProvider.getDataFromMaster();
 
         log.info("Start Exporting to excel");
 
