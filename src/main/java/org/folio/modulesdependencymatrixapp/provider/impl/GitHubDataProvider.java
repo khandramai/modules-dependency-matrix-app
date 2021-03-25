@@ -51,53 +51,34 @@ public class GitHubDataProvider implements DataProvider {
     private static final String TOKEN = "b0f3f47f4b8a2051a429f744a9a1b02b1b6312ad";
     private static final String POM_XML = "pom.xml";
     private static final String RELEASES_URL = "https://api.github.com/repos/folio-org/*/releases";
-   // private static final ExecutorService pool = Executors.newFixedThreadPool(10);
 
     private final GitHub gitHub;
 
+    private final List<GHRepository> repositories;
+    private final List<List<GHRepository>> batches;
+
     public GitHubDataProvider() throws IOException {
         gitHub = new GitHubBuilder().withOAuthToken(TOKEN).build();
+        repositories = getRepositories();
+        batches = splitIntoBatches(repositories,10);
     }
 
     public List<Module> getDataFromMaster() {
         Map<String, String> descriptors = new HashMap<>();
+        List<CompletableFuture<Map<String, String>>> futures = new ArrayList<>();
 
-        try {
-            var organization = gitHub.getOrganization("folio-org");
-            var repositoriesMap = organization.getRepositories();
+        logger.info("Getting data from the master.");
 
-            var repositories = repositoriesMap
-                    .keySet()
-                    .stream()
-                    .filter(repo -> repo.startsWith("edge-") || repo.startsWith("mod-") || repo.startsWith("ui-"))
-                    .map(repoName -> {
-                        try {
-                            return gitHub.getRepository("folio-org/" + repoName);
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                            logger.error("Repository {} doesn't exist", repoName);
-                            return null;
-                        }
-                    })
-                    .collect(Collectors.toList());
+        for (List<GHRepository> batch : batches) {
+            futures.add(getFileContentForMasterAsync(batch));
+        }
 
-            List<List<GHRepository>> batches = splitIntoBatches(repositories, 10);
-
-            List<CompletableFuture<Map<String, String>>> futures = new ArrayList<>();
-            batches.forEach(batch -> {
-                futures.add(getFileContentForMasterAsync(batch));
-            });
-
-            futures.forEach(future -> {
-                try {
-                    descriptors.putAll(future.get());
-                } catch (InterruptedException | ExecutionException e) {
-                    e.printStackTrace();
-                }
-            });
-
-        } catch (IOException e) {
-            logger.error(e);
+        for (CompletableFuture<Map<String, String>> future : futures) {
+            try {
+                descriptors.putAll(future.get());
+            } catch (InterruptedException | ExecutionException e) {
+                e.printStackTrace();
+            }
         }
 
         return mapDescriptorsToModules(descriptors);
@@ -106,48 +87,42 @@ public class GitHubDataProvider implements DataProvider {
     @Override
     public List<Module> getDataFromTag(int number) {
         Map<String, String> descriptors = new HashMap<>();
+        List<CompletableFuture<Map<String, String>>> futures = new ArrayList<>();
 
-        try {
-            var organization = gitHub.getOrganization("folio-org");
-            var repositoriesMap = organization.getRepositories();
+        logger.info("Getting data from a tag with index: {}.", number);
 
-            var repositories = repositoriesMap
-                    .keySet()
-                    .stream()
-                    .filter(repo -> repo.startsWith("edge-") || repo.startsWith("mod-") || repo.startsWith("ui-"))
-                    .map(repoName -> {
-                        try {
-                            return gitHub.getRepository("folio-org/" + repoName);
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                            logger.error("Repository {} doesn't exist", repoName);
-                            return null;
-                        }
-                    })
-                    .collect(Collectors.toList());
+        for (List<GHRepository> batch : batches) {
+            futures.add(getFileContentForTagAsync(batch, number));
+        }
 
-            List<List<GHRepository>> batches = splitIntoBatches(repositories, 10);
-
-            List<CompletableFuture<Map<String, String>>> futures = new ArrayList<>();
-            batches.forEach(batch -> {
-                futures.add(getFileContentForTagAsync(batch, number));
-            });
-
-            futures.forEach(future -> {
-                try {
-                    descriptors.putAll(future.get());
-                } catch (InterruptedException | ExecutionException e) {
-                    e.printStackTrace();
-                }
-            });
-        } catch (IOException e) {
-            logger.error(e);
+        for (CompletableFuture<Map<String, String>> future : futures) {
+            try {
+                descriptors.putAll(future.get());
+            } catch (InterruptedException | ExecutionException e) {
+                e.printStackTrace();
+            }
         }
 
         return mapDescriptorsToModules(descriptors);
     }
 
-    private static List<List<GHRepository>> splitIntoBatches(List<GHRepository> repositories, int batchSize){
+    private List<GHRepository> getRepositories() {
+        try {
+            var organization = gitHub.getOrganization("folio-org");
+            var repositoriesMap = organization.getRepositories();
+
+            return repositoriesMap
+                    .values()
+                    .stream()
+                    .filter(repo -> repo.getName().startsWith("edge-") || repo.getName().startsWith("mod-") || repo.getName().startsWith("ui-"))
+                    .collect(Collectors.toList());
+        } catch (IOException e) {
+            logger.error(e);
+        }
+        return new ArrayList<>();
+    }
+
+    private static List<List<GHRepository>> splitIntoBatches(List<GHRepository> repositories, int batchSize) {
         List<List<GHRepository>> batches = new ArrayList<>();
         int index = 0;
         while (index < repositories.size()) {
@@ -160,7 +135,6 @@ public class GitHubDataProvider implements DataProvider {
     private static CompletableFuture<Map<String, String>> getFileContentForTagAsync(List<GHRepository> repositories, int index) {
         return CompletableFuture.supplyAsync(() -> {
             Map<String, String> descriptors = new HashMap<>();
-
             repositories.forEach(repository -> {
                 try {
                     if (repository.getName().startsWith("ui-")) {
@@ -228,7 +202,6 @@ public class GitHubDataProvider implements DataProvider {
                 .build();
 
         try {
-
             var moduleDescriptorResponsePackageFuture = client.sendAsync(requestPackage, HttpResponse.BodyHandlers.ofString());
             var moduleDescriptorResponsePomFuture = client.sendAsync(requestPom, HttpResponse.BodyHandlers.ofString());
             var releasesResponseFuture = client.sendAsync(requestReleases, HttpResponse.BodyHandlers.ofString());
