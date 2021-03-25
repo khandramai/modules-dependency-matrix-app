@@ -51,6 +51,8 @@ public class GitHubDataProvider implements DataProvider {
     private static final String TOKEN = "b0f3f47f4b8a2051a429f744a9a1b02b1b6312ad";
     private static final String POM_XML = "pom.xml";
     private static final String RELEASES_URL = "https://api.github.com/repos/folio-org/*/releases";
+   // private static final ExecutorService pool = Executors.newFixedThreadPool(10);
+
     private final GitHub gitHub;
 
     public GitHubDataProvider() throws IOException {
@@ -62,32 +64,38 @@ public class GitHubDataProvider implements DataProvider {
 
         try {
             var organization = gitHub.getOrganization("folio-org");
-            var repositories = organization.getRepositories();
+            var repositoriesMap = organization.getRepositories();
 
-            long repositoriesCount = repositories
+            var repositories = repositoriesMap
                     .keySet()
                     .stream()
                     .filter(repo -> repo.startsWith("edge-") || repo.startsWith("mod-") || repo.startsWith("ui-"))
-                    .count();
-
-            repositories
-                    .keySet()
-                    .stream()
-                    .filter(repo -> repo.startsWith("edge-") || repo.startsWith("mod-") || repo.startsWith("ui-"))
-                    .forEach(repo -> {
+                    .map(repoName -> {
                         try {
-                            GHRepository repository = gitHub.getRepository("folio-org/" + repo);
-                            if (repo.startsWith("ui-")) {
-                                descriptors.put(repo, getFileContentForMaster(repository, "package.json"));
-                            } else {
-                                descriptors.put(repo, getFileContentForMaster(repository, "descriptors/ModuleDescriptor-template.json"));
-                            }
+                            return gitHub.getRepository("folio-org/" + repoName);
                         } catch (IOException e) {
-                            logger.error(String.format("%s doesn't have package.json or ModuleDescriptor-template.json", repo));
-
+                            e.printStackTrace();
+                            logger.error("Repository {} doesn't exist", repoName);
+                            return null;
                         }
-                        logger.info("Progress: {} / {} (Module: {} Master)", descriptors.size(), repositoriesCount, repo);
-                    });
+                    })
+                    .collect(Collectors.toList());
+
+            List<List<GHRepository>> batches = splitIntoBatches(repositories, 10);
+
+            List<CompletableFuture<Map<String, String>>> futures = new ArrayList<>();
+            batches.forEach(batch -> {
+                futures.add(getFileContentForMasterAsync(batch));
+            });
+
+            futures.forEach(future -> {
+                try {
+                    descriptors.putAll(future.get());
+                } catch (InterruptedException | ExecutionException e) {
+                    e.printStackTrace();
+                }
+            });
+
         } catch (IOException e) {
             logger.error(e);
         }
@@ -101,33 +109,37 @@ public class GitHubDataProvider implements DataProvider {
 
         try {
             var organization = gitHub.getOrganization("folio-org");
-            var repositories = organization.getRepositories();
+            var repositoriesMap = organization.getRepositories();
 
-            long repositoriesCount = repositories
+            var repositories = repositoriesMap
                     .keySet()
                     .stream()
                     .filter(repo -> repo.startsWith("edge-") || repo.startsWith("mod-") || repo.startsWith("ui-"))
-                    .count();
-
-            repositories
-                    .keySet()
-                    .stream()
-                    .filter(repo -> repo.startsWith("edge-") || repo.startsWith("mod-") || repo.startsWith("ui-"))
-                    .forEach(repo -> {
+                    .map(repoName -> {
                         try {
-                            GHRepository repository = gitHub.getRepository("folio-org/" + repo);
-
-                            if (repo.startsWith("ui-")) {
-                                descriptors.put(repo, getFileContentForTag(number, repository, "package.json"));
-                            } else {
-                                descriptors.put(repo, getFileContentForTag(number, repository, "descriptors/ModuleDescriptor-template.json"));
-                            }
+                            return gitHub.getRepository("folio-org/" + repoName);
                         } catch (IOException e) {
-                            logger.error(String.format("%s doesn't have package.json or ModuleDescriptor-template.json (search by Tag)", repo));
-
+                            e.printStackTrace();
+                            logger.error("Repository {} doesn't exist", repoName);
+                            return null;
                         }
-                        logger.info("Progress: {} / {} (Module: {} Tag index: {})", descriptors.size(), repositoriesCount, repo, number);
-                    });
+                    })
+                    .collect(Collectors.toList());
+
+            List<List<GHRepository>> batches = splitIntoBatches(repositories, 10);
+
+            List<CompletableFuture<Map<String, String>>> futures = new ArrayList<>();
+            batches.forEach(batch -> {
+                futures.add(getFileContentForTagAsync(batch, number));
+            });
+
+            futures.forEach(future -> {
+                try {
+                    descriptors.putAll(future.get());
+                } catch (InterruptedException | ExecutionException e) {
+                    e.printStackTrace();
+                }
+            });
         } catch (IOException e) {
             logger.error(e);
         }
@@ -135,8 +147,59 @@ public class GitHubDataProvider implements DataProvider {
         return mapDescriptorsToModules(descriptors);
     }
 
+    private static List<List<GHRepository>> splitIntoBatches(List<GHRepository> repositories, int batchSize){
+        List<List<GHRepository>> batches = new ArrayList<>();
+        int index = 0;
+        while (index < repositories.size()) {
+            batches.add(repositories.subList(index, Math.min(index + batchSize, repositories.size())));
+            index += batchSize;
+        }
+        return batches;
+    }
 
-    private String getFileContentForTag(int tagNumber, GHRepository repository, String filePackageName) throws IOException {
+    private static CompletableFuture<Map<String, String>> getFileContentForTagAsync(List<GHRepository> repositories, int index) {
+        return CompletableFuture.supplyAsync(() -> {
+            Map<String, String> descriptors = new HashMap<>();
+
+            repositories.forEach(repository -> {
+                try {
+                    if (repository.getName().startsWith("ui-")) {
+                        descriptors.put(repository.getName(), getFileContentForTag(index, repository, "package.json"));
+                    } else {
+                        descriptors.put(repository.getName(), getFileContentForTag(index, repository, "descriptors/ModuleDescriptor-template.json"));
+                    }
+                    logger.info("Module: {} Tag index: {}", repository.getName(), index);
+                } catch (IOException e) {
+                    logger.error("{} doesn't have package.json or ModuleDescriptor-template.json (search by Tag)", repository.getName());
+                }
+            });
+
+            return descriptors;
+        });
+    }
+
+    private static CompletableFuture<Map<String, String>> getFileContentForMasterAsync(List<GHRepository> repositories) {
+        return CompletableFuture.supplyAsync(() -> {
+            Map<String, String> descriptors = new HashMap<>();
+
+            repositories.forEach(repository -> {
+                try {
+                    if (repository.getName().startsWith("ui-")) {
+                        descriptors.put(repository.getName(), getFileContentForMaster(repository, "package.json"));
+                    } else {
+                        descriptors.put(repository.getName(), getFileContentForMaster(repository, "descriptors/ModuleDescriptor-template.json"));
+                    }
+                    logger.info("Module: {} Master", repository.getName());
+                } catch (IOException e) {
+                    logger.error("{} doesn't have package.json or ModuleDescriptor-template.json (Master)", repository.getName());
+                }
+            });
+
+            return descriptors;
+        });
+    }
+
+    private static String getFileContentForTag(int tagNumber, GHRepository repository, String filePackageName) throws IOException {
         var tags = repository.listTags().toList();
         String tag = "master";
 
@@ -201,7 +264,7 @@ public class GitHubDataProvider implements DataProvider {
         return body;
     }
 
-    private String getFileContentForMaster(GHRepository repository, String fileName) throws IOException {
+    private static String getFileContentForMaster(GHRepository repository, String fileName) throws IOException {
         String uri = BASE_URL + repository.getName() + "/master/" + fileName;
         String uriPom = BASE_URL + repository.getName() + "/master/" + POM_XML;
         String body;
@@ -229,7 +292,7 @@ public class GitHubDataProvider implements DataProvider {
         return body;
     }
 
-    private String builderToJson(String pomXml, String packageJson, String tag, String releaseDate) {
+    private static String builderToJson(String pomXml, String packageJson, String tag, String releaseDate) {
         String artefactId = "n/a";
         String rmb = "n/a";
         if (isNotFound(pomXml)) {
@@ -255,13 +318,13 @@ public class GitHubDataProvider implements DataProvider {
         return jsonToAddFirst + json.substring(1);
     }
 
-    private boolean isNotFound(String pomXml) {
+    private static boolean isNotFound(String pomXml) {
         return !Pattern.compile("404: Not Found").matcher(pomXml).find();
     }
 
 
     @SneakyThrows
-    private String getStringByXPath(String body, String regexp) {
+    private static String getStringByXPath(String body, String regexp) {
         body = correctResponseBody(body);
         InputSource source = new InputSource(new StringReader(body));
 
@@ -279,7 +342,7 @@ public class GitHubDataProvider implements DataProvider {
         return res;
     }
 
-    private String correctResponseBody(String body) {
+    private static String correctResponseBody(String body) {
         return body.trim().replaceFirst("^([\\W]+)<", "<");
     }
 
@@ -333,7 +396,7 @@ public class GitHubDataProvider implements DataProvider {
         return modules;
     }
 
-    private String getTag(GHRepository repository) throws IOException {
+    private static String getTag(GHRepository repository) throws IOException {
         String tag = "master";
         var tags = repository.listTags().toList();
         if (!tags.isEmpty()) {

@@ -19,7 +19,7 @@ public class UIModuleDeserializer extends StdDeserializer<Module> {
     private static final String VERSION_FIELD = "version";
     private static final String DEPENDENCIES_FIELD = "okapiInterfaces";
     private static final String PREVIOUS_RELEASE_FIELD = "previousReleaseVersion";
-    private static final String  PREVIOUS_RELEASE_DATE_FIELD = "previousReleaseData";
+    private static final String PREVIOUS_RELEASE_DATE_FIELD = "previousReleaseData";
 
     public UIModuleDeserializer() {
         this(null);
@@ -54,7 +54,7 @@ public class UIModuleDeserializer extends StdDeserializer<Module> {
         }
 
         Module module = new Module();
-        module.setName(name);
+        module.setName(name.replace("@folio/", "UI "));
         module.setId(version);
         module.setRequires(dependencies);
         module.setPreviousReleaseVersion(previousReleaseVersion);

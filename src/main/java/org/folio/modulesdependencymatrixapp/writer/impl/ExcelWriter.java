@@ -122,13 +122,13 @@ public class ExcelWriter implements Writer {
     }
 
     private static void setArchiveColumnsWidth(final Sheet sheet) {
-        sheet.setColumnWidth(0, 95 * 40);
-        sheet.setColumnWidth(1, 65 * 40);
-        sheet.setColumnWidth(2, 100 * 40);
-        sheet.setColumnWidth(3, 300 * 40);
+        sheet.setColumnWidth(0, 200 * 40);
+        sheet.setColumnWidth(1, 200 * 40);
+        sheet.setColumnWidth(2, 50 * 40);
+        sheet.setColumnWidth(3, 190 * 40);
         sheet.setColumnWidth(4, 300 * 40);
         sheet.setColumnWidth(5, 300 * 40);
-        sheet.setColumnWidth(6, 64 * 40);
+        sheet.setColumnWidth(6, 200 * 40);
     }
 
     private static void setArchiveHeaders(final Sheet sheet, final CellStyle cellStyle) {
