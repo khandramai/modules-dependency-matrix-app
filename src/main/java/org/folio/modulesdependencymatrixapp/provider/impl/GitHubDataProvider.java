@@ -15,7 +15,6 @@ import org.folio.modulesdependencymatrixapp.provider.DataProvider;
 import org.kohsuke.github.GHRepository;
 import org.kohsuke.github.GitHub;
 import org.kohsuke.github.GitHubBuilder;
-import org.springframework.stereotype.Service;
 import org.w3c.dom.Document;
 import org.xml.sax.InputSource;
 
@@ -40,7 +39,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-@Service
 public class GitHubDataProvider implements DataProvider {
 
     public static final String ARTIFACT_ID_X_PATH = "/project/artifactId";
@@ -48,17 +46,18 @@ public class GitHubDataProvider implements DataProvider {
     private static final Logger logger = LogManager.getLogger(GitHubDataProvider.class);
     private static final HttpClient client = HttpClient.newHttpClient();
     private static final String BASE_URL = "https://raw.githubusercontent.com/folio-org/";
-    private static final String TOKEN = "b0f3f47f4b8a2051a429f744a9a1b02b1b6312ad";
     private static final String POM_XML = "pom.xml";
     private static final String RELEASES_URL = "https://api.github.com/repos/folio-org/*/releases";
 
     private final GitHub gitHub;
+    private static String token;
 
     private final List<GHRepository> repositories;
     private final List<List<GHRepository>> batches;
 
-    public GitHubDataProvider() throws IOException {
-        gitHub = new GitHubBuilder().withOAuthToken(TOKEN).build();
+    public GitHubDataProvider(String gitHubToken) throws IOException {
+        token = gitHubToken;
+        gitHub = new GitHubBuilder().withOAuthToken(token).build();
         repositories = getRepositories();
         batches = splitIntoBatches(repositories,10);
     }
@@ -188,17 +187,17 @@ public class GitHubDataProvider implements DataProvider {
 
         HttpRequest requestPom = HttpRequest.newBuilder()
                 .uri(URI.create(uriPom))
-                .header("Authorization", "token " + TOKEN)
+                .header("Authorization", "token " + token)
                 .build();
 
         HttpRequest requestPackage = HttpRequest.newBuilder()
                 .uri(URI.create(uriPackage))
-                .header("Authorization", "token " + TOKEN)
+                .header("Authorization", "token " + token)
                 .build();
 
         HttpRequest requestReleases = HttpRequest.newBuilder()
                 .uri(URI.create(RELEASES_URL.replace("*", repository.getName())))
-                .header("Authorization", "token " + TOKEN)
+                .header("Authorization", "token " + token)
                 .build();
 
         try {
@@ -244,11 +243,11 @@ public class GitHubDataProvider implements DataProvider {
 
         HttpRequest requestPom = HttpRequest.newBuilder()
                 .uri(URI.create(uriPom))
-                .header("Authorization", "token " + TOKEN)
+                .header("Authorization", "token " + token)
                 .build();
         HttpRequest requestPackage = HttpRequest.newBuilder()
                 .uri(URI.create(uri))
-                .header("Authorization", "token " + TOKEN)
+                .header("Authorization", "token " + token)
                 .build();
 
         try {
